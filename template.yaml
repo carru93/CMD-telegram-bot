@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Community Manager Defender Bot
+
+Parameters:
+  botToken:
+    Type: String
+    Description: The token given by Bot Father
+    NoEcho: True
+
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  DBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: True
+      AttributeDefinitions:
+        -
+          AttributeName: user_id
+          AttributeType: N
+        -
+          AttributeName: chat_id
+          AttributeType: N
+      KeySchema:
+        -
+          AttributeName: user_id
+          KeyType: HASH
+        -
+          AttributeName: chat_id
+          KeyType: RANGE
+  Queue:
+    Type: AWS::SQS::Queue
+    Properties:
+      DelaySeconds: 120
+      MaximumMessageSize: 1024
+      MessageRetentionPeriod: 360
+  CloudWatchLogGroupDefender:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DefenderFunction}'
+      RetentionInDays: 14
+  DefenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: defender/
+      Handler: main.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          BOT_TOKEN: !Ref botToken
+          QUEUE_URL: !Ref Queue
+          TABLE_NAME: !Ref DBTable
+      Events:
+        Defender:
+          Type: HttpApi
+          Properties:
+            Path: /webhook
+            Method: ANY
+      Policies:
+        - AWSLambdaExecute
+        - Version: '2012-10-17' 
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:DeleteItem
+                - sqs:SendMessage
+                - sqs:DeleteMessage
+              Resource:
+                - !GetAtt DBTable.Arn
+                - !GetAtt Queue.Arn
+  CloudWatchLogGroupKicker:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${KickerFunction}'
+      RetentionInDays: 14
+  KickerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: kicker/
+      Handler: main.sqs_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          BOT_TOKEN: !Ref botToken
+          QUEUE_URL: !Ref Queue
+          TABLE_NAME: !Ref DBTable
+      Events:
+        Kick:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt Queue.Arn
+            BatchSize: 1
+      Policies:
+        - AWSLambdaExecute
+        - Version: '2012-10-17' 
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:DeleteItem
+                - sqs:DeleteMessage
+                - sqs:ReceiveMessage
+                - sqs:GetQueueAttributes
+              Resource:
+                - !GetAtt DBTable.Arn
+                - !GetAtt Queue.Arn
+Outputs:
+  DefenderAPI:
+    Description: "API Gateway endpoint URL for Defender bot function"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
+  DefenderFunction:
+    Description: "Defender Lambda Function ARN"
+    Value: !GetAtt DefenderFunction.Arn
+  DefenderFunctionIamRole:
+    Description: "Implicit IAM Role created for Hello World function"
+    Value: !GetAtt DefenderFunctionRole.Arn
