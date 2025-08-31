@@ -21,7 +21,9 @@ Once you complete the steps in the Get Started section, you can add the bot to a
 
    ```bash
    curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
-     --data-urlencode "url=<API_GATEWAY_ENDPOINT>"
+     --data-urlencode "url=<API_GATEWAY_ENDPOINT>" \
+     --data-urlencode 'allowed_updates=["message","callback_query"]' \
+     --data-urlencode "drop_pending_updates=true"
    ```
 
    You should receive a JSON response like:
@@ -34,5 +36,6 @@ Once you complete the steps in the Get Started section, you can add the bot to a
    ```bash
    "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url={API_GATEWAY_ENDPOINT}"
    ```
+   but with this GET call you cannot limit the type of events you will get.
 
 > **Important:** copy the endpoint **exactly** and **do not** add a trailing slash. For HTTP APIs the route is `/webhook` (e.g., `https://<api-id>.execute-api.<region>.amazonaws.com/webhook`).
